@@ -22,53 +22,44 @@ jobs:
           java-version: 11
           distribution: adopt
 
-      # 3.获取签名密钥
-      - name: decrypt key
-        run: |
-          gpg --quiet --batch --yes --decrypt \
-          --passphrase=${{ secrets.KEY_PASSPHRASE }} \
-          --output gradle/assemble/dandanplay.jks gradle/assemble/dandanplay.jks.gpg
-
-      # 4.配置构建类型
+      # 3.配置构建类型（改成 Debug，免签名）
       - name: setup build type
-        run: echo "BUILD_TYPE=beta" >> $GITHUB_ENV
+        run: echo "BUILD_TYPE=Debug" >> $GITHUB_ENV
 
-      # 5.构建安装包
+      # 4.构建安装包（使用 assembleDebug，不需要签名）
       - name: assemble apk
-        env:
-          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
-          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
-          ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
-        run: chmod +x gradlew &&./gradlew clean assemble${{ env.BUILD_TYPE }} --stacktrace
+        run: chmod +x gradlew && ./gradlew clean assembleDebug --stacktrace
 
-      # 6.配置构建版本
+      # 5.配置构建版本
       - name: setup build version
         run: |
-          apk_version=`egrep -o "[0-9].[0-9].[0-9]" buildSrc/src/main/java/Versions.kt`
+          apk_version=`egrep -o "[0-9]+\.[0-9]+\.[0-9]+" buildSrc/src/main/java/Versions.kt`
           echo "BUILD_VERSION=$apk_version" >> $GITHUB_ENV
 
-      # 7.移动文件到根目录
+      # 6.移动文件到根目录
       - name: move file
         run: |
           abis=(arm64-v8a armeabi-v7a universal)
           for abi in ${abis[@]}
           do
-            file_name="dandanplay_v${{ env.BUILD_VERSION }}_${abi}-${{ env.BUILD_TYPE }}.apk"
-            mv app/build/outputs/apk/${{ env.BUILD_TYPE }}/${file_name} $file_name
+            file_name="dandanplay_v${{ env.BUILD_VERSION }}_${abi}-debug.apk"
+            mv app/build/outputs/apk/debug/dandanplay_v${{ env.BUILD_VERSION }}_${abi}-debug.apk $file_name 2>/dev/null || true
+            # 如果上面路径不对，尝试下面这个通用查找方式
+            find app/build/outputs -name "*${abi}*.apk" -exec mv {} $file_name \; 2>/dev/null || true
           done
 
-      # 8.创建Release
+      # 7.创建 Release
       - name: generate release
         id: generate_release
         uses: softprops/action-gh-release@v1
         with:
-          name: 弹弹play概念版 v${{ env.BUILD_VERSION }} Beta
-          tag_name: dandanplay-v${{ env.BUILD_VERSION }}-beta
-          body: 最新测试包，与主分支代码同步
+          name: 弹弹play概念版 v${{ env.BUILD_VERSION }} Debug
+          tag_name: dandanplay-v${{ env.BUILD_VERSION }}-debug
+          body: 最新测试包（未签名 Debug 版本），与主分支代码同步
           prerelease: true
           files: |
-            dandanplay_v${{ env.BUILD_VERSION }}_arm64-v8a-${{ env.BUILD_TYPE }}.apk
-            dandanplay_v${{ env.BUILD_VERSION }}_armeabi-v7a-${{ env.BUILD_TYPE }}.apk
-            dandanplay_v${{ env.BUILD_VERSION }}_universal-${{ env.BUILD_TYPE }}.apk
+            dandanplay_v${{ env.BUILD_VERSION }}_arm64-v8a-debug.apk
+            dandanplay_v${{ env.BUILD_VERSION }}_armeabi-v7a-debug.apk
+            dandanplay_v${{ env.BUILD_VERSION }}_universal-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
