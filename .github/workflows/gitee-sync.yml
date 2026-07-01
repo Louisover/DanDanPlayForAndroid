@@ -1,19 +1,58 @@
-name: gitee-sync
-on: push
+name: package beta
+
+on:
+  push:
+    branches:
+      - master
+
+# 增加权限
+permissions:
+  contents: write
 
 jobs:
-  repo-sync:
+  package:
+    name: Generate Beta APK
     runs-on: ubuntu-latest
     steps:
       - name: checkout source code
-        uses: actions/checkout@v2
-        
-      - name: sync github -> gitee
-        uses: Yikun/hub-mirror-action@master
+        uses: actions/checkout@v4   # 建议升级到 v4
+
+      - name: set up JDK
+        uses: actions/setup-java@v4   # 建议升级
         with:
-          src: 'github/xyoye'
-          dst: 'gitee/xyoye'
-          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
-          dst_token:  ${{ secrets.GITEE_TOKEN }}
-          static_list: 'DanDanPlayForAndroid'
-          force_update: true
+          java-version: 11
+          distribution: adopt
+
+      - name: setup build type
+        run: echo "BUILD_TYPE=Debug" >> $GITHUB_ENV
+
+      - name: assemble apk
+        run: chmod +x gradlew && ./gradlew clean assembleDebug --stacktrace
+
+      - name: setup build version
+        run: |
+          apk_version=`egrep -o "[0-9]+\.[0-9]+\.[0-9]+" buildSrc/src/main/java/Versions.kt`
+          echo "BUILD_VERSION=$apk_version" >> $GITHUB_ENV
+
+      - name: move file
+        run: |
+          abis=(arm64-v8a armeabi-v7a universal)
+          for abi in ${abis[@]}
+          do
+            file_name="dandanplay_v${{ env.BUILD_VERSION }}_${abi}-debug.apk"
+            find app/build/outputs -name "*${abi}*-debug.apk" -exec mv {} ./$file_name \; 2>/dev/null || true
+          done
+
+      - name: generate release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 弹弹play概念版 v${{ env.BUILD_VERSION }} Debug
+          tag_name: dandanplay-v${{ env.BUILD_VERSION }}-debug
+          body: 最新测试包（未签名 Debug 版本），与主分支代码同步
+          prerelease: true
+          files: |
+            dandanplay_v${{ env.BUILD_VERSION }}_arm64-v8a-debug.apk
+            dandanplay_v${{ env.BUILD_VERSION }}_armeabi-v7a-debug.apk
+            dandanplay_v${{ env.BUILD_VERSION }}_universal-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
