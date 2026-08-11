@@ -98,7 +98,8 @@ class DanmuView(
             }
 
             override fun updateTimer(timer: DanmakuTimer?) {
-
+                timer ?: return
+                syncDanmuTime(timer.currMillisecond)
             }
         })
     }
@@ -291,6 +292,14 @@ class DanmuView(
         updateMaxLine()
         updateMaxScreenNum()
         setLanguage(PlayerInitializer.Danmu.language)
+    }
+
+    private fun syncDanmuTime(currentDanmuTime: Long) {
+        val currentVideoPos = mControlWrapper.getCurrentPosition() + PlayerInitializer.Danmu.offsetPosition
+        val drift = currentVideoPos - currentDanmuTime
+        val speedAdjustment = (drift / 10000f).coerceIn(-0.15f, 0.15f)
+        val videoSpeed = PlayerInitializer.Player.videoSpeed
+        mDanmakuContext.setSpeed(videoSpeed * (1f + speedAdjustment))
     }
 
     fun updateDanmuSize() {
